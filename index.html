@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Traffic Sign Detection</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a0a;
+  --panel: #111214;
+  --card: #18191c;
+  --border: #252629;
+  --accent: #e8ff00;
+  --red: #ff3c3c;
+  --green: #00ff85;
+  --blue: #4dacff;
+  --orange: #ff8c00;
+  --text: #f0f0f0;
+  --muted: #555;
+  --font-title: 'Bebas Neue', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+/* ── HEADER ── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 2rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 50;
+}
+.logo {
+  font-family: var(--font-title); font-size: 1.6rem;
+  letter-spacing: 0.05em; color: var(--accent);
+}
+.logo span { color: var(--text); }
+.status-badge {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.live { background: var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,255,133,.4)} 50%{opacity:.7;box-shadow:0 0 0 6px rgba(0,255,133,0)} }
+
+/* ── MAIN LAYOUT ── */
+.app { display: grid; grid-template-columns: 1fr 340px; gap: 0; height: calc(100vh - 57px); overflow: hidden; }
+
+/* ── LEFT PANEL ── */
+.left-panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+
+/* ── MODE SELECTOR ── */
+.mode-bar {
+  display: grid; grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--border);
+}
+.mode-btn {
+  padding: 1rem; background: transparent; border: none;
+  font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted);
+  cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+  border-right: 1px solid var(--border); letter-spacing: 0.05em;
+}
+.mode-btn:last-child { border-right: none; }
+.mode-btn.active { color: var(--accent); background: rgba(232,255,0,0.05); }
+.mode-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,0.03); }
+.mode-icon { font-size: 1.1rem; }
+
+/* ── VIDEO AREA ── */
+.video-area {
+  flex: 1; position: relative; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+#liveFrame {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain; display: none;
+}
+.placeholder {
+  display: flex; flex-direction: column; align-items: center; gap: 1rem;
+  color: var(--muted);
+}
+.placeholder-icon { font-size: 4rem; opacity: 0.3; }
+.placeholder-text { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.05em; }
+
+/* ── UPLOAD ZONE ── */
+.upload-area {
+  flex: 1; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.5rem; padding: 2rem;
+  cursor: pointer;
+}
+.upload-area.visible { display: flex; }
+.upload-drop {
+  width: 100%; max-width: 480px;
+  border: 2px dashed var(--border); border-radius: 8px;
+  padding: 3rem 2rem;
+  display: flex; flex-direction: column; align-items: center; gap: 1rem;
+  transition: all 0.3s; cursor: pointer;
+}
+.upload-drop:hover, .upload-drop.over {
+  border-color: var(--accent);
+  background: rgba(232,255,0,0.03);
+}
+.upload-drop .icon { font-size: 3rem; }
+.upload-drop h3 { font-family: var(--font-title); font-size: 1.4rem; letter-spacing: 0.05em; }
+.upload-drop p { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); text-align: center; line-height: 1.8; }
+.fmt-list { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
+.fmt { font-family: var(--font-mono); font-size: 0.6rem; padding: 2px 7px; border: 1px solid var(--border); border-radius: 2px; color: var(--muted); }
+#fileInput { display: none; }
+.upload-btn {
+  padding: 0.7rem 2rem;
+  background: var(--accent); color: #000;
+  font-family: var(--font-mono); font-size: 0.8rem; font-weight: 500;
+  border: none; border-radius: 4px; cursor: pointer;
+  letter-spacing: 0.05em; transition: all 0.2s;
+}
+.upload-btn:hover { background: #f5ff40; transform: translateY(-1px); }
+
+/* ── VIDEO WITH FEED ── */
+.video-with-feed {
+  flex: 1; display: none; position: relative; background: #000;
+  align-items: center; justify-content: center;
+}
+.video-with-feed.visible { display: flex; }
+
+/* ── CAMERA FORM ── */
+.camera-form {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(10,10,10,0.95);
+  border-top: 1px solid var(--border);
+  padding: 0.8rem 1rem;
+  display: flex; gap: 0.6rem; align-items: center;
+}
+.cam-input {
+  flex: 1; padding: 0.6rem 0.9rem;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text);
+  font-family: var(--font-mono); font-size: 0.72rem;
+  outline: none; transition: border-color 0.2s;
+}
+.cam-input:focus { border-color: var(--accent); }
+.cam-input::placeholder { color: var(--muted); }
+.btn {
+  padding: 0.6rem 1.2rem;
+  font-family: var(--font-mono); font-size: 0.72rem;
+  border: none; border-radius: 4px; cursor: pointer;
+  transition: all 0.2s; white-space: nowrap;
+}
+.btn-start { background: var(--green); color: #000; }
+.btn-start:hover { background: #33ffaa; }
+.btn-stop { background: var(--red); color: #fff; display: none; }
+.btn-stop:hover { background: #ff6060; }
+
+/* ── PROGRESS BAR ── */
+.progress-bar {
+  position: absolute; top: 0; left: 0; height: 3px;
+  background: var(--accent); transition: width 0.1s linear;
+  width: 0%; display: none;
+}
+
+/* ── RIGHT PANEL ── */
+.right-panel {
+  display: flex; flex-direction: column;
+  background: var(--panel); overflow: hidden;
+}
+
+/* ── ALERT BOX ── */
+.alert-box {
+  margin: 1rem; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--border);
+  display: none;
+}
+.alert-box.visible { display: block; }
+.alert-header {
+  padding: 0.7rem 1rem;
+  display: flex; align-items: center; gap: 0.6rem;
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500;
+}
+.alert-header.danger { background: rgba(255,60,60,0.2); color: var(--red); border-bottom: 1px solid rgba(255,60,60,0.3); }
+.alert-header.warning { background: rgba(255,140,0,0.2); color: var(--orange); border-bottom: 1px solid rgba(255,140,0,0.3); }
+.alert-header.info { background: rgba(77,172,255,0.15); color: var(--blue); border-bottom: 1px solid rgba(77,172,255,0.25); }
+.alert-icon { font-size: 1rem; }
+.alert-body {
+  padding: 0.8rem 1rem;
+  font-size: 0.82rem; line-height: 1.6; color: rgba(240,240,240,0.8);
+}
+.advice-tag {
+  display: inline-block;
+  font-family: var(--font-mono); font-size: 0.65rem;
+  background: rgba(232,255,0,0.1); color: var(--accent);
+  padding: 2px 7px; border-radius: 2px; margin-top: 0.5rem;
+}
+@keyframes alert-in { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+.alert-box.visible { animation: alert-in 0.3s ease-out; }
+
+/* ── DETECTIONS LIST ── */
+.panel-title {
+  padding: 0.9rem 1rem 0.5rem;
+  font-family: var(--font-mono); font-size: 0.65rem; color: var(--muted);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.det-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+.det-list::-webkit-scrollbar { width: 3px; }
+.det-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+.det-item {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: 0.7rem 0.8rem; border-radius: 4px;
+  margin-bottom: 0.3rem;
+  background: var(--card); border: 1px solid var(--border);
+  transition: all 0.3s;
+}
+.det-item.new-detection {
+  border-color: var(--accent);
+  animation: flash-in 0.5s ease-out;
+}
+@keyframes flash-in {
+  0% { background: rgba(232,255,0,0.15); border-color: var(--accent); }
+  100% { background: var(--card); }
+}
+.det-emoji { font-size: 1.3rem; flex: 0 0 auto; }
+.det-info { flex: 1; min-width: 0; }
+.det-label { font-family: var(--font-title); font-size: 1rem; letter-spacing: 0.05em; }
+.det-advice { font-family: var(--font); font-size: 0.72rem; color: rgba(240,240,240,0.5); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.det-conf {
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500;
+  flex: 0 0 auto;
+}
+.conf-hi { color: var(--green); }
+.conf-md { color: var(--orange); }
+.conf-lo { color: var(--red); }
+
+/* ── LOG ── */
+.log-section {
+  border-top: 1px solid var(--border);
+  max-height: 180px; display: flex; flex-direction: column;
+}
+.log-body {
+  flex: 1; overflow-y: auto; padding: 0.5rem;
+  font-family: var(--font-mono); font-size: 0.62rem; line-height: 1.9;
+}
+.log-body::-webkit-scrollbar { width: 2px; }
+.log-body::-webkit-scrollbar-thumb { background: var(--border); }
+.log-line { display: flex; gap: 0.6rem; }
+.l-time { color: var(--muted); flex: 0 0 60px; }
+.l-tag { padding: 0 5px; border-radius: 2px; flex: 0 0 auto; }
+.t-det { background: rgba(77,172,255,0.2); color: var(--blue); }
+.t-voice { background: rgba(0,255,133,0.15); color: var(--green); }
+.t-warn { background: rgba(255,140,0,0.15); color: var(--orange); }
+.t-err { background: rgba(255,60,60,0.15); color: var(--red); }
+.t-sys { background: rgba(240,240,240,0.08); color: var(--muted); }
+.l-msg { color: rgba(240,240,240,0.7); flex: 1; }
+
+/* ── EMPTY STATE ── */
+.empty-detections {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 0.6rem; opacity: 0.3;
+}
+.empty-icon { font-size: 2.5rem; }
+.empty-text { font-family: var(--font-mono); font-size: 0.7rem; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 800px) {
+  .app { grid-template-columns: 1fr; height: auto; }
+  .left-panel { height: 60vh; }
+  .right-panel { height: 40vh; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Traffic<span>Sign</span> Detection</div>
+  <div class="status-badge">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">INACTIF</span>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- ═══ LEFT PANEL ═══ -->
+  <div class="left-panel">
+
+    <!-- MODE SELECTOR -->
+    <div class="mode-bar">
+      <button class="mode-btn active" id="btnCamera" onclick="setMode('camera')">
+        <span class="mode-icon">📱</span> CAMÉRA TÉLÉPHONE
+      </button>
+      <button class="mode-btn" id="btnVideo" onclick="setMode('video')">
+        <span class="mode-icon">🎬</span> VIDÉO
+      </button>
+    </div>
+
+    <!-- ── CAMERA MODE ── -->
+    <div class="video-with-feed visible" id="cameraPanel">
+      <div class="placeholder" id="cameraPlaceholder">
+        <div class="placeholder-icon">📱</div>
+        <div class="placeholder-text">ENTREZ L'URL DE VOTRE CAMÉRA ET LANCEZ</div>
+      </div>
+      <img id="liveFrame" alt="Live feed">
+      <div class="progress-bar" id="progressBar"></div>
+      <div class="camera-form">
+        <input class="cam-input" id="camUrl"
+          type="text"
+          placeholder="http://192.168.137.136:4747/video"
+          value="http://192.168.137.136:4747/video">
+        <button class="btn btn-start" id="btnStart" onclick="startCamera()">▶ LANCER</button>
+        <button class="btn btn-stop" id="btnStop" onclick="stopDetection()">■ STOP</button>
+      </div>
+    </div>
+
+    <!-- ── VIDEO MODE ── -->
+    <div class="upload-area" id="videoPanel">
+      <div class="upload-drop" id="dropZone"
+        onclick="document.getElementById('fileInput').click()"
+        ondragover="onDragOver(event)"
+        ondragleave="onDragLeave(event)"
+        ondrop="onDrop(event)">
+        <input type="file" id="fileInput" accept="video/*" onchange="onFileSelect(event)">
+        <div class="icon">🎥</div>
+        <h3>Déposez votre vidéo</h3>
+        <p>Glissez une vidéo ici ou cliquez pour parcourir.<br>La détection YOLOv8 sera appliquée en temps réel.</p>
+        <div class="fmt-list">
+          <span class="fmt">MP4</span><span class="fmt">AVI</span>
+          <span class="fmt">MOV</span><span class="fmt">MKV</span><span class="fmt">WEBM</span>
+        </div>
+      </div>
+      <div id="videoActions" style="display:none; flex-direction:column; align-items:center; gap:0.8rem;">
+        <div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--muted)" id="videoName"></div>
+        <div style="display:flex;gap:0.6rem">
+          <button class="upload-btn" onclick="startVideo()">🚀 ANALYSER LA VIDÉO</button>
+          <button class="btn" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="resetVideo()">✕ Changer</button>
+        </div>
+        <div id="videoProgressBox" style="display:none;width:100%;max-width:400px">
+          <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:0.65rem;color:var(--muted);margin-bottom:0.4rem">
+            <span id="frameInfo">Frame 0 / 0</span>
+            <span id="pctInfo">0%</span>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+            <div id="videoProgressFill" style="height:100%;background:var(--accent);width:0%;transition:width 0.1s"></div>
+          </div>
+          <img id="videoFrame" alt="Video frame" style="width:100%;border-radius:4px;margin-top:0.8rem;display:none">
+          <button class="btn btn-stop" id="btnStopVideo" style="display:none;margin-top:0.6rem;width:100%" onclick="stopDetection()">■ ARRÊTER</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ RIGHT PANEL ═══ -->
+  <div class="right-panel">
+
+    <!-- ALERT BOX -->
+    <div class="alert-box" id="alertBox">
+      <div class="alert-header" id="alertHeader">
+        <span class="alert-icon" id="alertIcon">⚠️</span>
+        <span id="alertTitle">Nouveau panneau détecté</span>
+      </div>
+      <div class="alert-body">
+        <div id="alertAdvice">—</div>
+        <div class="advice-tag">💡 Conseil conducteur</div>
+      </div>
+    </div>
+
+    <!-- DETECTIONS -->
+    <div class="panel-title">DÉTECTIONS EN COURS</div>
+    <div class="det-list" id="detList">
+      <div class="empty-detections" id="emptyState">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-text">En attente de détections...</div>
+      </div>
+    </div>
+
+    <!-- LOG -->
+    <div class="log-section">
+      <div class="panel-title">CONSOLE</div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════
+let ws = null;
+let mode = 'camera';
+let uploadedPath = null;
+let alertTimeout = null;
+let detectionHistory = [];
+
+// ════════════════════════════════════════════
+//  MODE SWITCH
+// ════════════════════════════════════════════
+function setMode(m) {
+  mode = m;
+  stopDetection();
+  document.getElementById('btnCamera').classList.toggle('active', m === 'camera');
+  document.getElementById('btnVideo').classList.toggle('active', m === 'video');
+  document.getElementById('cameraPanel').classList.toggle('visible', m === 'camera');
+  document.getElementById('videoPanel').classList.toggle('visible', m === 'video');
+}
+
+// ════════════════════════════════════════════
+//  CAMERA
+// ════════════════════════════════════════════
+function startCamera() {
+  const url = document.getElementById('camUrl').value.trim();
+  if (!url) return;
+
+  document.getElementById('cameraPlaceholder').style.display = 'none';
+  document.getElementById('liveFrame').style.display = 'block';
+
+  setStatus(true, 'CAMÉRA · LIVE');
+  showBtn(true);
+  addLog('SYS', `Connexion: ${url}`, 't-sys');
+
+  const wsUrl = `ws://localhost:8000/ws/camera?url=${encodeURIComponent(url)}`;
+  connectWS(wsUrl, handleFrame);
+}
+
+// ════════════════════════════════════════════
+//  VIDEO UPLOAD
+// ════════════════════════════════════════════
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('over'); }
+function onDragLeave(e) { document.getElementById('dropZone').classList.remove('over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+}
+function onFileSelect(e) { if (e.target.files[0]) loadFile(e.target.files[0]); }
+
+function loadFile(file) {
+  document.getElementById('videoName').textContent = `📂 ${file.name}  (${(file.size/1024/1024).toFixed(1)} MB)`;
+  document.getElementById('videoActions').style.display = 'flex';
+  document.getElementById('dropZone').style.display = 'none';
+  addLog('SYS', `Fichier sélectionné: ${file.name}`, 't-sys');
+
+  // Upload vers FastAPI
+  const fd = new FormData();
+  fd.append('file', file);
+  fetch('/upload', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+      uploadedPath = d.path;
+      addLog('SYS', 'Fichier uploadé, prêt pour analyse', 't-sys');
+    })
+    .catch(() => addLog('ERR', 'Erreur upload', 't-err'));
+}
+
+function startVideo() {
+  if (!uploadedPath) { addLog('ERR', 'Aucun fichier chargé', 't-err'); return; }
+
+  document.getElementById('videoProgressBox').style.display = 'block';
+  document.getElementById('videoFrame').style.display = 'block';
+  document.getElementById('btnStopVideo').style.display = 'block';
+
+  setStatus(true, 'ANALYSE · VIDEO');
+  addLog('SYS', 'Analyse YOLOv8 démarrée', 't-sys');
+
+  const wsUrl = `ws://localhost:8000/ws/video?path=${encodeURIComponent(uploadedPath)}`;
+  connectWS(wsUrl, handleVideoFrame);
+}
+
+function handleVideoFrame(data) {
+  if (data.type === 'done') {
+    setStatus(false, 'ANALYSE TERMINÉE');
+    addLog('SYS', `✅ Analyse terminée — ${data.total_frames || ''} frames`, 't-sys');
+    if (ws) { ws.close(); ws = null; }
+    return;
+  }
+  if (data.frame) {
+    document.getElementById('videoFrame').src = 'data:image/jpeg;base64,' + data.frame;
+  }
+  if (data.progress !== undefined) {
+    document.getElementById('videoProgressFill').style.width = data.progress + '%';
+    document.getElementById('pctInfo').textContent = data.progress + '%';
+    document.getElementById('frameInfo').textContent = `Frame ${data.current_frame} / ${data.total_frames}`;
+  }
+  handleDetections(data.detections || []);
+}
+
+function resetVideo() {
+  uploadedPath = null;
+  document.getElementById('dropZone').style.display = 'flex';
+  document.getElementById('videoActions').style.display = 'none';
+  document.getElementById('videoProgressBox').style.display = 'none';
+}
+
+// ════════════════════════════════════════════
+//  WEBSOCKET CORE
+// ════════════════════════════════════════════
+function connectWS(url, handler) {
+  if (ws) { ws.close(); ws = null; }
+  ws = new WebSocket(url);
+
+  ws.onopen = () => addLog('SYS', 'WebSocket connecté', 't-sys');
+
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'error') {
+      addLog('ERR', data.message, 't-err');
+      setStatus(false, 'ERREUR');
+      showBtn(false);
+      return;
+    }
+    handler(data);
+  };
+
+  ws.onclose = () => {
+    addLog('SYS', 'Connexion fermée', 't-sys');
+    setStatus(false, 'INACTIF');
+    showBtn(false);
+  };
+
+  ws.onerror = () => {
+    addLog('ERR', 'Erreur WebSocket', 't-err');
+    setStatus(false, 'ERREUR');
+  };
+}
+
+function handleFrame(data) {
+  if (data.frame) {
+    const img = document.getElementById('liveFrame');
+    img.src = 'data:image/jpeg;base64,' + data.frame;
+  }
+  handleDetections(data.detections || []);
+}
+
+// ════════════════════════════════════════════
+//  DETECTIONS & ALERTS
+// ════════════════════════════════════════════
+function handleDetections(detections) {
+  if (!detections.length) return;
+
+  detections.forEach(d => {
+    // Check si nouvelle détection
+    const isNew = !detectionHistory.some(h => h.label === d.label && (Date.now() - h.time < 5000));
+
+    if (isNew) {
+      detectionHistory.push({ label: d.label, time: Date.now() });
+      // Garder seulement les 20 dernières
+      if (detectionHistory.length > 20) detectionHistory.shift();
+
+      // 🚨 ALERT
+      showAlert(d);
+      addLog('DET', `${d.label} · ${d.conf}%`, 't-det');
+      addLog('🔊', `Vocal: "${d.label}"`, 't-voice');
+    }
+
+    // Ajouter à la liste
+    addDetectionItem(d, isNew);
+  });
+}
+
+function showAlert(d) {
+  const box = document.getElementById('alertBox');
+  const header = document.getElementById('alertHeader');
+
+  // Choisir le niveau d'alerte
+  const label = d.label.toLowerCase();
+  let level = 'info';
+  if (label.includes('stop') || label.includes('no entry') || label.includes('danger')) level = 'danger';
+  else if (label.includes('speed') || label.includes('warning') || label.includes('yield') || label.includes('slippery')) level = 'warning';
+
+  header.className = `alert-header ${level}`;
+  document.getElementById('alertIcon').textContent =
+    level === 'danger' ? '🚨' : level === 'warning' ? '⚠️' : 'ℹ️';
+  document.getElementById('alertTitle').textContent = d.icon_text || d.label;
+  document.getElementById('alertAdvice').textContent = d.advice || 'Respectez ce panneau.';
+
+  box.classList.remove('visible');
+  void box.offsetWidth; // reflow pour re-trigger animation
+  box.classList.add('visible');
+
+  clearTimeout(alertTimeout);
+  alertTimeout = setTimeout(() => box.classList.remove('visible'), 6000);
+}
+
+function addDetectionItem(d, isNew) {
+  const list = document.getElementById('detList');
+  const empty = document.getElementById('emptyState');
+  if (empty) empty.remove();
+
+  // Eviter les doublons visuels récents
+  const existing = list.querySelector(`[data-label="${d.label}"]`);
+  if (existing) {
+    existing.querySelector('.det-conf').textContent = d.conf + '%';
+    if (isNew) existing.classList.add('new-detection');
+    return;
+  }
+
+  const confClass = d.conf >= 90 ? 'conf-hi' : d.conf >= 75 ? 'conf-md' : 'conf-lo';
+  const item = document.createElement('div');
+  item.className = 'det-item' + (isNew ? ' new-detection' : '');
+  item.dataset.label = d.label;
+  item.innerHTML = `
+    <div class="det-emoji">${d.icon_text?.split(' ')[0] || '🔍'}</div>
+    <div class="det-info">
+      <div class="det-label">${d.label.toUpperCase()}</div>
+      <div class="det-advice">${d.advice}</div>
+    </div>
+    <div class="det-conf ${confClass}">${d.conf}%</div>`;
+
+  list.insertBefore(item, list.firstChild);
+
+  // Max 10 items
+  while (list.children.length > 10) list.removeChild(list.lastChild);
+}
+
+// ════════════════════════════════════════════
+//  STOP
+// ════════════════════════════════════════════
+function stopDetection() {
+  if (ws) { ws.close(); ws = null; }
+  setStatus(false, 'INACTIF');
+  showBtn(false);
+  document.getElementById('btnStopVideo').style.display = 'none';
+}
+
+// ════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════
+function setStatus(live, text) {
+  document.getElementById('statusDot').className = 'dot' + (live ? ' live' : '');
+  document.getElementById('statusText').textContent = text;
+}
+
+function showBtn(running) {
+  document.getElementById('btnStart').style.display = running ? 'none' : 'block';
+  document.getElementById('btnStop').style.display = running ? 'block' : 'none';
+}
+
+function addLog(tag, msg, cls) {
+  const body = document.getElementById('logBody');
+  const now = new Date();
+  const t = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="l-time">${t}</span><span class="l-tag ${cls}">${tag}</span><span class="l-msg">${msg}</span>`;
+  body.insertBefore(div, body.firstChild);
+  while (body.children.length > 30) body.removeChild(body.lastChild);
+}
+</script>
+</body>
+</html>
